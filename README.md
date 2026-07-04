@@ -1,18 +1,22 @@
-# community.snapshot
+# philip860.leapp_snapshot
 
-Cross-platform snapshot automation collection.
+Snapshot dispatcher and provider collection for Red Hat Enterprise Linux Leapp upgrade workflows.
 
 ## Purpose
 
-community.snapshot provides a common snapshot framework for RHEL hosts.
+`philip860.leapp_snapshot` provides a common snapshot framework for RHEL hosts before running Leapp upgrades.
 
-It supports snapshot workflows before operations such as:
+It is designed to support hosts running across multiple platforms, including:
 
-- RHEL Leapp upgrades
-- patching
-- maintenance windows
-- configuration changes
+- LVM-backed RHEL systems
+- AWS EC2
+- VMware
+- Azure
+- Google Cloud
+- KVM/libvirt
+- Bare metal systems
 
+The collection allows a Leapp workflow to use one common snapshot entry point while the dispatcher selects the appropriate snapshot provider.
 
 ## Supported Providers
 
@@ -26,18 +30,20 @@ It supports snapshot workflows before operations such as:
 | KVM/libvirt | Planned |
 | Bare Metal | Planned |
 
-
 ## Snapshot Flow
 
 ```text
 snapshot_dispatcher
-        |
         |
         +--> snapshot_lvm
         |
         +--> snapshot_aws
         |
         +--> snapshot_vmware
+        |
+        +--> snapshot_azure
+        |
+        +--> snapshot_gcp
         |
         +--> snapshot_kvm
         |
