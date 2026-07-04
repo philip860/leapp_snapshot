@@ -1,0 +1,33 @@
+---
+- name: Skip LVM snapshot provider when requested
+  ansible.builtin.debug:
+    msg:
+      - "SKIPPED: LVM snapshot provider skipped."
+      - "Reason: skip_snapshot=true"
+  when: skip_snapshot | bool
+
+- name: Run LVM snapshot provider
+  when: not skip_snapshot | bool
+  block:
+    - name: Validate requested snapshot action
+      ansible.builtin.assert:
+        that:
+          - snapshot_action is defined
+          - snapshot_action in snapshot_valid_actions
+        fail_msg: "snapshot_action must be one of: {{ snapshot_valid_actions | join(', ') }}"
+
+    - name: Include LVM snapshot check tasks
+      ansible.builtin.include_tasks: check.yml
+      when: snapshot_action == "check"
+
+    - name: Include LVM snapshot create tasks
+      ansible.builtin.include_tasks: create.yml
+      when: snapshot_action == "create"
+
+    - name: Include LVM snapshot remove tasks
+      ansible.builtin.include_tasks: remove.yml
+      when: snapshot_action == "remove"
+
+    - name: Include LVM snapshot revert tasks
+      ansible.builtin.include_tasks: revert.yml
+      when: snapshot_action == "revert"

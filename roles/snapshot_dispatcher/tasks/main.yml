@@ -1,0 +1,174 @@
+---
+- name: Skip snapshot workflow when requested
+  ansible.builtin.debug:
+    msg:
+      - "SKIPPED: Snapshot workflow skipped."
+      - "Reason: skip_snapshot=true"
+      - "No snapshot provider was called."
+  when: skip_snapshot | bool
+
+- name: Run snapshot dispatcher
+  when: not skip_snapshot | bool
+  block:
+    - name: Validate requested snapshot action
+      ansible.builtin.assert:
+        that:
+          - snapshot_action is defined
+          - snapshot_action in snapshot_valid_actions
+        fail_msg: "snapshot_action must be one of: {{ snapshot_valid_actions | join(', ') }}"
+
+    - name: Detect virtualization or platform type
+      ansible.builtin.command:
+        cmd: systemd-detect-virt
+      register: snapshot_platform_detect
+      changed_when: false
+      failed_when: false
+
+    - name: Gather filesystem layout
+      ansible.builtin.command:
+        cmd: df -hT
+      register: snapshot_df
+      changed_when: false
+      failed_when: false
+
+    - name: Gather block device layout
+      ansible.builtin.command:
+        cmd: lsblk -o NAME,TYPE,FSTYPE,SIZE,MOUNTPOINT
+      register: snapshot_lsblk
+      changed_when: false
+      failed_when: false
+
+    - name: Check for LVM logical volumes
+      ansible.builtin.command:
+        cmd: lvs --reportformat json -o vg_name,lv_name
+      register: snapshot_lvm_lvs_cmd
+      changed_when: false
+      failed_when: false
+
+    - name: Request AWS IMDSv2 token
+      ansible.builtin.uri:
+        url: http://169.254.169.254/latest/api/token
+        method: PUT
+        headers:
+          X-aws-ec2-metadata-token-ttl-seconds: "60"
+        return_content: true
+        timeout: 2
+      register: snapshot_aws_imds_token
+      changed_when: false
+      failed_when: false
+
+    - name: Detect AWS EC2 instance ID
+      ansible.builtin.uri:
+        url: http://169.254.169.254/latest/meta-data/instance-id
+        method: GET
+        headers:
+          X-aws-ec2-metadata-token: "{{ snapshot_aws_imds_token.content | default('') }}"
+        return_content: true
+        timeout: 2
+      register: snapshot_aws_instance_id_result
+      changed_when: false
+      failed_when: false
+      when:
+        - snapshot_aws_imds_token.status | default(0) == 200
+
+    - name: Set detected snapshot platform facts
+      ansible.builtin.set_fact:
+        snapshot_detected_platform: "{{ snapshot_platform_detect.stdout | default('bare-metal-or-unknown') }}"
+        snapshot_has_lvm: "{{ snapshot_lvm_lvs_cmd.rc == 0 and (snapshot_lvm_lvs_cmd.stdout | default('') | length > 0) }}"
+        snapshot_is_aws: "{{ snapshot_aws_instance_id_result.status | default(0) == 200 }}"
+        snapshot_aws_instance_id: "{{ snapshot_aws_instance_id_result.content | default('') }}"
+        snapshot_is_vmware: "{{ snapshot_platform_detect.stdout | default('') == 'vmware' }}"
+        snapshot_is_kvm: "{{ snapshot_platform_detect.stdout | default('') in ['kvm', 'qemu'] }}"
+        snapshot_is_baremetal: "{{ snapshot_platform_detect.rc != 0 or snapshot_platform_detect.stdout | default('') in ['', 'none'] }}"
+
+    - name: Select snapshot provider
+      ansible.builtin.set_fact:
+        snapshot_provider_effective: >-
+          {% if snapshot_provider != 'auto' %}
+          {{ snapshot_provider }}
+          {% elif snapshot_is_aws and snapshot_aws_enabled | bool %}
+          aws
+          {% elif snapshot_is_vmware and snapshot_vmware_enabled | bool %}
+          vmware
+          {% elif snapshot_is_kvm and snapshot_kvm_enabled | bool %}
+          kvm
+          {% elif snapshot_has_lvm and snapshot_lvm_enabled | bool %}
+          lvm
+          {% elif snapshot_is_baremetal and snapshot_baremetal_enabled | bool %}
+          baremetal
+          {% else %}
+          unsupported
+          {% endif %}
+
+    - name: Normalize selected snapshot provider
+      ansible.builtin.set_fact:
+        snapshot_provider_effective: "{{ snapshot_provider_effective | trim }}"
+
+    - name: Display snapshot dispatcher summary
+      ansible.builtin.debug:
+        msg:
+          - "Snapshot action: {{ snapshot_action }}"
+          - "Snapshot set name: {{ snapshot_set_name }}"
+          - "Requested provider: {{ snapshot_provider }}"
+          - "Effective provider: {{ snapshot_provider_effective }}"
+          - "Detected platform: {{ snapshot_detected_platform }}"
+          - "AWS detected: {{ snapshot_is_aws }}"
+          - "AWS instance ID: {{ snapshot_aws_instance_id | default('N/A') }}"
+          - "LVM detected: {{ snapshot_has_lvm }}"
+          - "VMware detected: {{ snapshot_is_vmware }}"
+          - "KVM detected: {{ snapshot_is_kvm }}"
+          - "Bare metal detected: {{ snapshot_is_baremetal }}"
+
+    - name: Fail when snapshot provider is unsupported
+      ansible.builtin.fail:
+        msg: >-
+          No supported snapshot provider was detected for this host.
+          Set skip_snapshot=true to continue without snapshots, or set
+          snapshot_provider explicitly.
+      when:
+        - snapshot_provider_effective == "unsupported"
+        - snapshot_fail_when_unsupported | bool
+
+    - name: Warn when snapshot provider is unsupported
+      ansible.builtin.debug:
+        msg:
+          - "WARNING: No supported snapshot provider was detected."
+          - "No snapshot action was performed."
+          - "Leapp workflow may continue without snapshot protection."
+      when:
+        - snapshot_provider_effective == "unsupported"
+        - not snapshot_fail_when_unsupported | bool
+
+    - name: Run LVM snapshot provider
+      ansible.builtin.include_role:
+        name: community.snapshot.snapshot_lvm
+      when: snapshot_provider_effective == "lvm"
+
+    - name: AWS snapshot provider placeholder
+      ansible.builtin.debug:
+        msg:
+          - "AWS snapshot provider selected."
+          - "Provider implementation will be added in a future release."
+          - "Use snapshot_provider=lvm if this EC2 host should use LVM snapshots instead."
+      when: snapshot_provider_effective == "aws"
+
+    - name: VMware snapshot provider placeholder
+      ansible.builtin.debug:
+        msg:
+          - "VMware snapshot provider selected."
+          - "Provider implementation will be added in a future release."
+      when: snapshot_provider_effective == "vmware"
+
+    - name: KVM snapshot provider placeholder
+      ansible.builtin.debug:
+        msg:
+          - "KVM snapshot provider selected."
+          - "Provider implementation will be added in a future release."
+      when: snapshot_provider_effective == "kvm"
+
+    - name: Bare metal snapshot provider placeholder
+      ansible.builtin.debug:
+        msg:
+          - "Bare metal snapshot provider selected."
+          - "Provider implementation will be added in a future release."
+      when: snapshot_provider_effective == "baremetal"

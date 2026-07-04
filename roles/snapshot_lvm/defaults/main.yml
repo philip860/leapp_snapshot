@@ -1,0 +1,17 @@
+---
+skip_snapshot: false
+
+snapshot_action: check
+snapshot_set_name: leapp-preupgrade
+
+snapshot_valid_actions:
+  - check
+  - create
+  - remove
+  - revert
+
+snapshot_lvm_volumes: []
+snapshot_create_volumes: "{{ snapshot_lvm_volumes }}"
+
+snapshot_lvm_fail_when_no_matching_lvs: false
+lvm_snapshots_fail_when_no_matching_lvs: "{{ snapshot_lvm_fail_when_no_matching_lvs }}"

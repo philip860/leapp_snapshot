@@ -1,0 +1,37 @@
+namespace: community
+name: snapshot
+
+version: 1.0.0
+
+readme: README.md
+
+authors:
+  - Phil Duncan
+
+description: >
+  Cross-platform RHEL snapshot automation collection supporting
+  LVM, VMware, AWS, Azure, GCP, KVM, and bare metal snapshot workflows.
+
+license:
+  - MIT
+
+tags:
+  - linux
+  - rhel
+  - leapp
+  - snapshot
+  - lvm
+  - vmware
+  - aws
+  - azure
+  - gcp
+
+dependencies: {}
+
+repository: https://philip860/YOUR_ACCOUNT/community.snapshot
+
+documentation: https://philip860/YOUR_ACCOUNT/community.snapshot
+
+homepage: https://philip860/YOUR_ACCOUNT/community.snapshot
+
+issues: https://philip860/YOUR_ACCOUNT/community.snapshot/issues

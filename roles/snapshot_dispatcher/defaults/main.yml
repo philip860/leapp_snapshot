@@ -1,0 +1,20 @@
+---
+skip_snapshot: false
+
+snapshot_action: check
+snapshot_provider: auto
+snapshot_set_name: leapp-preupgrade
+
+snapshot_valid_actions:
+  - check
+  - create
+  - remove
+  - revert
+
+snapshot_lvm_enabled: true
+snapshot_aws_enabled: true
+snapshot_vmware_enabled: true
+snapshot_kvm_enabled: true
+snapshot_baremetal_enabled: true
+
+snapshot_fail_when_unsupported: false
