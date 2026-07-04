@@ -1,50 +1,28 @@
-# philip860.leapp_snapshot
+## `roles/snapshot_lvm/README.md`
 
-Snapshot dispatcher and provider collection for Red Hat Enterprise Linux Leapp upgrade workflows.
+```markdown
+# snapshot_lvm
+
+LVM snapshot provider role for `philip860.leapp_snapshot`.
 
 ## Purpose
 
-`philip860.leapp_snapshot` provides a common snapshot framework for RHEL hosts before running Leapp upgrades.
+This role performs LVM snapshot readiness checks and delegates snapshot create, remove, and revert actions to `infra.lvm_snapshots`.
 
-It is designed to support hosts running across multiple platforms, including:
+## Supported actions
 
-- LVM-backed RHEL systems
-- AWS EC2
-- VMware
-- Azure
-- Google Cloud
-- KVM/libvirt
-- Bare metal systems
+- check
+- create
+- remove
+- revert
 
-The collection allows a Leapp workflow to use one common snapshot entry point while the dispatcher selects the appropriate snapshot provider.
+## Variables
 
-## Supported Providers
+```yaml
+snapshot_action: create
+snapshot_set_name: leapp-preupgrade
 
-| Provider | Status |
-|---|---|
-| LVM | Supported |
-| AWS EBS | Planned |
-| VMware Snapshot API | Planned |
-| Azure Managed Disk | Planned |
-| Google Cloud Disk | Planned |
-| KVM/libvirt | Planned |
-| Bare Metal | Planned |
-
-## Snapshot Flow
-
-```text
-snapshot_dispatcher
-        |
-        +--> snapshot_lvm
-        |
-        +--> snapshot_aws
-        |
-        +--> snapshot_vmware
-        |
-        +--> snapshot_azure
-        |
-        +--> snapshot_gcp
-        |
-        +--> snapshot_kvm
-        |
-        +--> snapshot_baremetal
+snapshot_lvm_volumes:
+  - vg: VolGroup00
+    lv: rootVol
+    size: 4G
