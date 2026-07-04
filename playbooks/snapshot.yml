@@ -1,13 +1,8 @@
 ---
-- name: Snapshot RHEL host
-  hosts: "{{ rhel_inventory_group | default('all') }}"
+- name: Snapshot RHEL host before Leapp upgrade
+  hosts: all
   become: true
   gather_facts: true
 
-  environment:
-    LANG: en_US.UTF-8
-    LC_ALL: en_US.UTF-8
-    TERM: linux
-
   roles:
-    - role: community.snapshot.snapshot_dispatcher
+    - role: philip860.leapp_snapshot.snapshot_dispatcher
