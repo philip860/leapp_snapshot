@@ -1,8 +1,8 @@
 ---
 galaxy_info:
-  author: community
-  description: Snapshot dispatcher role for RHEL hosts across multiple platforms
+  author: Phil Duncan
+  description: Snapshot role for RHEL Leapp upgrade workflows
   license: MIT
-  min_ansible_version: "2.14"
+  min_ansible_version: "2.9"
 
 dependencies: []
