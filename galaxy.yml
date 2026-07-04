@@ -1,5 +1,6 @@
-namespace: community
-name: snapshot
+---
+namespace: philip860
+name: leapp_snapshot
 
 version: 1.0.0
 
@@ -9,8 +10,10 @@ authors:
   - Phil Duncan
 
 description: >
-  Cross-platform RHEL snapshot automation collection supporting
-  LVM, VMware, AWS, Azure, GCP, KVM, and bare metal snapshot workflows.
+  Snapshot dispatcher and provider collection for Red Hat Enterprise Linux
+  Leapp upgrade workflows. Provides a common snapshot framework across
+  LVM, AWS EC2, VMware, Azure, Google Cloud, KVM/libvirt, and bare metal
+  environments.
 
 license:
   - MIT
@@ -18,20 +21,27 @@ license:
 tags:
   - linux
   - rhel
+  - redhat
   - leapp
+  - upgrade
   - snapshot
+  - rollback
   - lvm
   - vmware
   - aws
   - azure
   - gcp
+  - kvm
+  - baremetal
+  - automation
 
-dependencies: {}
+dependencies:
+  infra.lvm_snapshots: "*"
 
-repository: https://philip860/YOUR_ACCOUNT/community.snapshot
+repository: https://github.com/philip860/leapp_snapshot
 
-documentation: https://philip860/YOUR_ACCOUNT/community.snapshot
+documentation: https://github.com/philip860/leapp_snapshot
 
-homepage: https://philip860/YOUR_ACCOUNT/community.snapshot
+homepage: https://github.com/philip860/leapp_snapshot
 
-issues: https://philip860/YOUR_ACCOUNT/community.snapshot/issues
+issues: https://github.com/philip860/leapp_snapshot/issues
