@@ -1,11 +1,51 @@
 ---
-- name: Run LVM snapshot readiness check before revert
-  ansible.builtin.include_tasks: check.yml
+- name: Run AWS snapshot readiness check before revert
+  include_tasks: check.yml
 
-- name: Execute LVM snapshot revert
-  ansible.builtin.include_role:
-    name: infra.lvm_snapshots.snapshot_revert
-  vars:
-    snapshot_revert_volumes: "{{ lvm_snapshot_eligible_volumes }}"
+- name: Locate AWS EBS snapshots available for revert
+  ec2_snapshot_info:
+    region: "{{ snapshot_aws_effective_region }}"
+    filters:
+      tag:SnapshotSet: "{{ snapshot_aws_set_name }}"
+      tag:InstanceId: "{{ snapshot_aws_effective_instance_id }}"
+  delegate_to: localhost
+  register: snapshot_aws_revert_candidates
   when:
-    - lvm_snapshot_eligible_volumes | length > 0
+    - snapshot_aws_effective_instance_id | length > 0
+
+- name: Initialize AWS snapshot revert list
+  set_fact:
+    snapshot_aws_revert_ids: []
+
+- name: Build AWS snapshot revert list
+  set_fact:
+    snapshot_aws_revert_ids: "{{ snapshot_aws_revert_ids + [item.snapshot_id] }}"
+  loop: "{{ snapshot_aws_revert_candidates.snapshots | default([]) }}"
+  when:
+    - item.snapshot_id is defined
+
+- name: AWS snapshot revert summary
+  debug:
+    msg:
+      - "Snapshot provider: AWS"
+      - "Snapshot action: revert"
+      - "Snapshot set name: {{ snapshot_aws_set_name }}"
+      - "AWS region: {{ snapshot_aws_effective_region }}"
+      - "AWS instance ID: {{ snapshot_aws_effective_instance_id }}"
+      - "Available snapshots:"
+      - "{{ snapshot_aws_revert_ids }}"
+
+- name: Stop AWS snapshot revert
+  fail:
+    msg:
+      - "AWS EBS snapshot revert is currently disabled by design."
+      - "Snapshots were found and validated successfully."
+      - "AWS rollback requires replacing attached EBS volumes."
+      - "Manual restore workflow:"
+      - "1. Stop EC2 instance"
+      - "2. Create volumes from snapshots"
+      - "3. Detach current volumes"
+      - "4. Attach restored volumes using original device names"
+      - "5. Start EC2 instance"
+      - "Detected snapshots:"
+      - "{{ snapshot_aws_revert_ids }}"
