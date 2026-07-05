@@ -1,5 +1,5 @@
 ---
-skip_snapshot: false
+snapshot_skip: false
 
 snapshot_action: check
 snapshot_provider: auto

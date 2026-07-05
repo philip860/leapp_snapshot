@@ -10,7 +10,7 @@ It detects the platform and selects the appropriate snapshot provider.
 
 ## Supported behavior
 
-- Honors `skip_snapshot`
+- Honors `snapshot_skip`
 - Validates `snapshot_action`
 - Detects AWS EC2
 - Detects LVM
@@ -20,7 +20,7 @@ It detects the platform and selects the appropriate snapshot provider.
 ## Variables
 
 ```yaml
-skip_snapshot: false
+snapshot_skip: false
 snapshot_action: check
 snapshot_provider: auto
 snapshot_set_name: leapp-preupgrade

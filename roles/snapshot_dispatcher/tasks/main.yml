@@ -128,7 +128,7 @@
       ansible.builtin.fail:
         msg: >-
           No supported snapshot provider was detected for this host.
-          Set skip_snapshot=true to continue without snapshots, or set
+          Set snapshot_skip=true to continue without snapshots, or set
           snapshot_provider explicitly.
       when:
         - snapshot_provider_effective == "unsupported"
