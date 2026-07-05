@@ -18,14 +18,52 @@ snapshot_aws_tags:
   Purpose: "RHEL Leapp upgrade"
   SnapshotSet: "{{ snapshot_set_name | default('leapp-preupgrade') }}"
 
-# Wait for EBS snapshots to complete
+# -------------------------------------------------------------------
+# AWS snapshot completion behavior
+# -------------------------------------------------------------------
+
+# Wait for EBS snapshots to complete after creation.
+#
+# true:
+#   - Submit AWS snapshot request
+#   - Return snapshot IDs immediately
+#   - Poll AWS until snapshots complete
+#   - Show progress in AAP job output
+#
+# false:
+#   - Submit AWS snapshot request
+#   - Do not wait for completion
+#   - Continue workflow immediately
+#
 snapshot_aws_wait: true
 
-# Maximum wait time in seconds
+# Seconds between AWS snapshot status checks.
+snapshot_aws_wait_delay: 30
+
+# Number of AWS snapshot status checks before timeout.
+#
+# Example:
+# 120 retries x 30 seconds = 3600 seconds (60 minutes)
+#
+snapshot_aws_wait_retries: 120
+
+# Legacy compatibility value.
+#
+# Older versions passed this directly into amazon.aws.ec2_snapshot.
+# Current workflow submits snapshots asynchronously and polls separately.
+#
 snapshot_aws_wait_timeout: 1800
+
+# -------------------------------------------------------------------
+# Snapshot cleanup behavior
+# -------------------------------------------------------------------
 
 # Delete snapshots on remove action
 snapshot_aws_delete_on_remove: true
+
+# -------------------------------------------------------------------
+# Volume discovery behavior
+# -------------------------------------------------------------------
 
 # Fail if AWS volumes cannot be detected
 snapshot_aws_fail_when_no_volumes: true
@@ -33,7 +71,11 @@ snapshot_aws_fail_when_no_volumes: true
 # Include all attached EBS volumes by default
 snapshot_aws_snapshot_all_volumes: true
 
-# Optional list of volume IDs to snapshot instead
+# Optional list of volume IDs to snapshot instead.
+#
+# Empty list:
+#   - Automatically snapshot all detected EBS volumes
+#
 # Example:
 #
 # snapshot_aws_volume_ids:
@@ -42,9 +84,20 @@ snapshot_aws_snapshot_all_volumes: true
 #
 snapshot_aws_volume_ids: []
 
+# -------------------------------------------------------------------
+# Filesystem consistency behavior
+# -------------------------------------------------------------------
+
 # Reboot consistency behavior.
-# false = crash-consistent snapshot
-# true  = attempt filesystem freeze before snapshot
+#
+# false:
+#   - Create crash-consistent EBS snapshots
+#   - No filesystem freeze attempted
+#
+# true:
+#   - Attempt filesystem freeze before snapshot
+#   - Provides better filesystem consistency
+#
 snapshot_aws_freeze_filesystems: false
 
 # Filesystems excluded from freeze
