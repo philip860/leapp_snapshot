@@ -1,0 +1,58 @@
+---
+# AWS snapshot provider defaults
+
+# AWS region.
+# Leave empty to auto-detect from EC2 metadata.
+snapshot_aws_region: ""
+
+# EC2 instance ID.
+# Leave empty to auto-detect from EC2 metadata.
+snapshot_aws_instance_id: ""
+
+# Snapshot description prefix
+snapshot_aws_description: "Leapp pre-upgrade snapshot"
+
+# Tags applied to created EBS snapshots
+snapshot_aws_tags:
+  CreatedBy: "philip860.leapp_snapshot"
+  Purpose: "RHEL Leapp upgrade"
+  SnapshotSet: "{{ snapshot_set_name | default('leapp-preupgrade') }}"
+
+# Wait for EBS snapshots to complete
+snapshot_aws_wait: true
+
+# Maximum wait time in seconds
+snapshot_aws_wait_timeout: 1800
+
+# Delete snapshots on remove action
+snapshot_aws_delete_on_remove: true
+
+# Fail if AWS volumes cannot be detected
+snapshot_aws_fail_when_no_volumes: true
+
+# Include all attached EBS volumes by default
+snapshot_aws_snapshot_all_volumes: true
+
+# Optional list of volume IDs to snapshot instead
+# Example:
+#
+# snapshot_aws_volume_ids:
+#   - vol-xxxxxxxx
+#   - vol-yyyyyyyy
+#
+snapshot_aws_volume_ids: []
+
+# Reboot consistency behavior.
+# false = crash-consistent snapshot
+# true  = attempt filesystem freeze before snapshot
+snapshot_aws_freeze_filesystems: false
+
+# Filesystems excluded from freeze
+snapshot_aws_freeze_exclude:
+  - /
+  - /boot
+  - /boot/efi
+  - /proc
+  - /sys
+  - /dev
+  - /run

@@ -1,0 +1,11 @@
+---
+- name: Run LVM snapshot readiness check before remove
+  ansible.builtin.include_tasks: check.yml
+
+- name: Execute LVM snapshot remove
+  ansible.builtin.include_role:
+    name: infra.lvm_snapshots.snapshot_remove
+  vars:
+    snapshot_remove_volumes: "{{ lvm_snapshot_eligible_volumes }}"
+  when:
+    - lvm_snapshot_eligible_volumes | length > 0

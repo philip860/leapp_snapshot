@@ -1,0 +1,15 @@
+
+---
+
+galaxy_info:
+
+  author: community
+
+  description: LVM snapshot provider role for community.snapshot
+
+  license: MIT
+
+  min_ansible_version: "2.14"
+
+dependencies: []
+
