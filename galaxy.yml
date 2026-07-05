@@ -37,6 +37,7 @@ tags:
 
 dependencies:
   infra.lvm_snapshots: "*"
+  amazon.aws: "*"
 
 repository: https://github.com/philip860/leapp_snapshot
 
