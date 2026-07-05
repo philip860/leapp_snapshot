@@ -1,9 +1,9 @@
 ---
 - name: Set LVM snapshot variables
   ansible.builtin.set_fact:
-    snapshot_create_set_name: "{{ snapshot_set_name | default('snapshot-set') }}"
-    snapshot_remove_set_name: "{{ snapshot_set_name | default('snapshot-set') }}"
-    snapshot_revert_set_name: "{{ snapshot_set_name | default('snapshot-set') }}"
+    snapshot_create_set_name: "{{ snapshot_collection_set_name | default('snapshot-set') }}"
+    snapshot_remove_set_name: "{{ snapshot_collection_set_name | default('snapshot-set') }}"
+    snapshot_revert_set_name: "{{ snapshot_collection_set_name | default('snapshot-set') }}"
     snapshot_create_volumes_safe: "{{ snapshot_create_volumes | default(snapshot_lvm_volumes | default([])) }}"
 
 - name: Detect platform type

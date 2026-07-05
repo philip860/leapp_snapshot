@@ -16,7 +16,7 @@ snapshot_aws_description: "Leapp pre-upgrade snapshot"
 snapshot_aws_tags:
   CreatedBy: "philip860.leapp_snapshot"
   Purpose: "RHEL Leapp upgrade"
-  SnapshotSet: "{{ snapshot_set_name | default('leapp-preupgrade') }}"
+  SnapshotSet: "{{ snapshot_collection_set_name | default('leapp-preupgrade') }}"
 
 # -------------------------------------------------------------------
 # AWS snapshot completion behavior

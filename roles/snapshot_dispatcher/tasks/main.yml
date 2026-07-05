@@ -113,7 +113,7 @@
       ansible.builtin.debug:
         msg:
           - "Snapshot action: {{ snapshot_action }}"
-          - "Snapshot set name: {{ snapshot_set_name }}"
+          - "Snapshot set name: {{ snapshot_collection_set_name }}"
           - "Requested provider: {{ snapshot_provider | default('auto') }}"
           - "Effective provider: {{ snapshot_provider_effective }}"
           - "Detected platform: {{ snapshot_detected_platform }}"

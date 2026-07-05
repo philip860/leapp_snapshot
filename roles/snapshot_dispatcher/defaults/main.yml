@@ -3,7 +3,7 @@ snapshot_skip: false
 
 snapshot_action: check
 snapshot_provider: auto
-snapshot_set_name: leapp-preupgrade
+snapshot_collection_set_name: leapp-preupgrade
 
 snapshot_valid_actions:
   - check

@@ -1,7 +1,7 @@
 ---
 - name: Set AWS snapshot variables
   set_fact:
-    snapshot_aws_set_name: "{{ snapshot_set_name | default('leapp-preupgrade') }}"
+    snapshot_aws_set_name: "{{ snapshot_collection_set_name | default('leapp-preupgrade') }}"
     snapshot_aws_requested_volume_ids_safe: "{{ snapshot_aws_volume_ids | default([]) }}"
     snapshot_aws_effective_region: "{{ snapshot_aws_region | default('') }}"
     snapshot_aws_effective_instance_id: "{{ snapshot_aws_instance_id | default('') }}"
