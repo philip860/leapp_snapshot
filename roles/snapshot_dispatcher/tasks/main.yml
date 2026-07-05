@@ -1,14 +1,18 @@
 ---
+- name: Normalize skip snapshot flag
+  ansible.builtin.set_fact:
+    snapshot_skip_effective: "{{ skip_snapshot | default(false) | bool }}"
+
 - name: Skip snapshot workflow when requested
   ansible.builtin.debug:
     msg:
       - "SKIPPED: Snapshot workflow skipped."
       - "Reason: skip_snapshot=true"
       - "No snapshot provider was called."
-  when: skip_snapshot | bool
+  when: snapshot_skip_effective
 
 - name: Run snapshot dispatcher
-  when: not skip_snapshot | bool
+  when: not snapshot_skip_effective
   block:
     - name: Validate requested snapshot action
       ansible.builtin.assert:
@@ -84,17 +88,17 @@
     - name: Select snapshot provider
       ansible.builtin.set_fact:
         snapshot_provider_effective: >-
-          {% if snapshot_provider != 'auto' %}
+          {% if snapshot_provider | default('auto') != 'auto' %}
           {{ snapshot_provider }}
-          {% elif snapshot_is_aws and snapshot_aws_enabled | bool %}
+          {% elif snapshot_is_aws and snapshot_aws_enabled | default(true) | bool %}
           aws
-          {% elif snapshot_is_vmware and snapshot_vmware_enabled | bool %}
+          {% elif snapshot_is_vmware and snapshot_vmware_enabled | default(true) | bool %}
           vmware
-          {% elif snapshot_is_kvm and snapshot_kvm_enabled | bool %}
+          {% elif snapshot_is_kvm and snapshot_kvm_enabled | default(true) | bool %}
           kvm
-          {% elif snapshot_has_lvm and snapshot_lvm_enabled | bool %}
+          {% elif snapshot_has_lvm and snapshot_lvm_enabled | default(true) | bool %}
           lvm
-          {% elif snapshot_is_baremetal and snapshot_baremetal_enabled | bool %}
+          {% elif snapshot_is_baremetal and snapshot_baremetal_enabled | default(true) | bool %}
           baremetal
           {% else %}
           unsupported
@@ -109,7 +113,7 @@
         msg:
           - "Snapshot action: {{ snapshot_action }}"
           - "Snapshot set name: {{ snapshot_set_name }}"
-          - "Requested provider: {{ snapshot_provider }}"
+          - "Requested provider: {{ snapshot_provider | default('auto') }}"
           - "Effective provider: {{ snapshot_provider_effective }}"
           - "Detected platform: {{ snapshot_detected_platform }}"
           - "AWS detected: {{ snapshot_is_aws }}"
@@ -127,7 +131,7 @@
           snapshot_provider explicitly.
       when:
         - snapshot_provider_effective == "unsupported"
-        - snapshot_fail_when_unsupported | bool
+        - snapshot_fail_when_unsupported | default(false) | bool
 
     - name: Warn when snapshot provider is unsupported
       ansible.builtin.debug:
@@ -137,7 +141,7 @@
           - "Leapp workflow may continue without snapshot protection."
       when:
         - snapshot_provider_effective == "unsupported"
-        - not snapshot_fail_when_unsupported | bool
+        - not snapshot_fail_when_unsupported | default(false) | bool
 
     - name: Run LVM snapshot provider
       ansible.builtin.include_role:
