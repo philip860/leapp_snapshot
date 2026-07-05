@@ -1,11 +1,67 @@
 ---
-- name: Run LVM snapshot readiness check before remove
-  ansible.builtin.include_tasks: check.yml
+- name: Run AWS snapshot readiness check before remove
+  include_tasks: check.yml
 
-- name: Execute LVM snapshot remove
-  ansible.builtin.include_role:
-    name: infra.lvm_snapshots.snapshot_remove
-  vars:
-    snapshot_remove_volumes: "{{ lvm_snapshot_eligible_volumes }}"
+- name: Locate AWS EBS snapshots for removal
+  ec2_snapshot_info:
+    region: "{{ snapshot_aws_effective_region }}"
+    filters:
+      tag:SnapshotSet: "{{ snapshot_aws_set_name }}"
+      tag:InstanceId: "{{ snapshot_aws_effective_instance_id }}"
+  delegate_to: localhost
+  register: snapshot_aws_remove_candidates
   when:
-    - lvm_snapshot_eligible_volumes | length > 0
+    - snapshot_aws_effective_instance_id | length > 0
+
+- name: Initialize AWS snapshots removal list
+  set_fact:
+    snapshot_aws_remove_ids: []
+
+- name: Build AWS snapshots removal list
+  set_fact:
+    snapshot_aws_remove_ids: "{{ snapshot_aws_remove_ids + [item.snapshot_id] }}"
+  loop: "{{ snapshot_aws_remove_candidates.snapshots | default([]) }}"
+  when:
+    - item.snapshot_id is defined
+
+- name: AWS snapshot removal summary
+  debug:
+    msg:
+      - "Snapshot provider: AWS"
+      - "Snapshot action: remove"
+      - "Snapshot set name: {{ snapshot_aws_set_name }}"
+      - "AWS region: {{ snapshot_aws_effective_region }}"
+      - "AWS instance ID: {{ snapshot_aws_effective_instance_id }}"
+      - "Snapshots selected for removal:"
+      - "{{ snapshot_aws_remove_ids }}"
+
+- name: ALERT - No AWS snapshots found for removal
+  debug:
+    msg:
+      - "No AWS EBS snapshots were found matching:"
+      - "SnapshotSet={{ snapshot_aws_set_name }}"
+      - "InstanceId={{ snapshot_aws_effective_instance_id }}"
+      - "Nothing will be removed."
+  when:
+    - snapshot_aws_remove_ids | length == 0
+
+- name: Execute AWS EBS snapshot remove
+  ec2_snapshot:
+    region: "{{ snapshot_aws_effective_region }}"
+    snapshot_id: "{{ item }}"
+    state: absent
+  loop: "{{ snapshot_aws_remove_ids }}"
+  delegate_to: localhost
+  register: snapshot_aws_remove_results
+  when:
+    - snapshot_aws_remove_ids | length > 0
+    - snapshot_aws_delete_on_remove | default(true) | bool
+
+- name: Display AWS snapshot remove results
+  debug:
+    msg:
+      - "AWS snapshot removal completed."
+      - "Removed snapshots:"
+      - "{{ snapshot_aws_remove_results.results | default([]) }}"
+  when:
+    - snapshot_aws_remove_results is defined
