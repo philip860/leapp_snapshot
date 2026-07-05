@@ -11,10 +11,10 @@ snapshot_valid_actions:
   - remove
   - revert
 
-snapshot_lvm_enabled: true
-snapshot_aws_enabled: true
-snapshot_vmware_enabled: true
-snapshot_kvm_enabled: true
-snapshot_baremetal_enabled: true
+snapshot_provider_lvm_enabled: true
+snapshot_provider_aws_enabled: true
+snapshot_provider_vmware_enabled: true
+snapshot_provider_kvm_enabled: true
+snapshot_provider_baremetal_enabled: true
 
 snapshot_fail_when_unsupported: false

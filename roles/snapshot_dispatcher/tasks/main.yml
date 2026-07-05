@@ -91,15 +91,15 @@
         snapshot_provider_effective: >-
           {% if snapshot_provider | default('auto') != 'auto' %}
           {{ snapshot_provider }}
-          {% elif snapshot_is_aws and snapshot_aws_enabled | default(true) | bool %}
+          {% elif snapshot_is_aws and snapshot_provider_aws_enabled | default(true) | bool %}
           aws
-          {% elif snapshot_is_vmware and snapshot_vmware_enabled | default(true) | bool %}
+          {% elif snapshot_is_vmware and snapshot_provider_vmware_enabled | default(true) | bool %}
           vmware
-          {% elif snapshot_is_kvm and snapshot_kvm_enabled | default(true) | bool %}
+          {% elif snapshot_is_kvm and snapshot_provider_kvm_enabled | default(true) | bool %}
           kvm
-          {% elif snapshot_has_lvm and snapshot_lvm_enabled | default(true) | bool %}
+          {% elif snapshot_has_lvm and snapshot_provider_lvm_enabled | default(true) | bool %}
           lvm
-          {% elif snapshot_is_baremetal and snapshot_baremetal_enabled | default(true) | bool %}
+          {% elif snapshot_is_baremetal and snapshot_provider_baremetal_enabled | default(true) | bool %}
           baremetal
           {% else %}
           unsupported
