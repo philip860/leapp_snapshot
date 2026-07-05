@@ -141,34 +141,36 @@
 
     - name: Run LVM snapshot provider
       ansible.builtin.include_role:
-        name: community.snapshot.snapshot_lvm
-      when: snapshot_provider_effective == "lvm"
+        name: philip860.leapp_snapshot.snapshot_lvm
+      when:
+        - snapshot_provider_effective == "lvm"
 
-    - name: AWS snapshot provider placeholder
-      ansible.builtin.debug:
-        msg:
-          - "AWS snapshot provider selected."
-          - "Provider implementation will be added in a future release."
-          - "Use snapshot_provider=lvm if this EC2 host should use LVM snapshots instead."
-      when: snapshot_provider_effective == "aws"
+    - name: Run AWS snapshot provider
+      ansible.builtin.include_role:
+        name: philip860.leapp_snapshot.snapshot_aws
+      when:
+        - snapshot_provider_effective == "aws"
 
     - name: VMware snapshot provider placeholder
       ansible.builtin.debug:
         msg:
           - "VMware snapshot provider selected."
           - "Provider implementation will be added in a future release."
-      when: snapshot_provider_effective == "vmware"
+      when:
+        - snapshot_provider_effective == "vmware"
 
     - name: KVM snapshot provider placeholder
       ansible.builtin.debug:
         msg:
           - "KVM snapshot provider selected."
           - "Provider implementation will be added in a future release."
-      when: snapshot_provider_effective == "kvm"
+      when:
+        - snapshot_provider_effective == "kvm"
 
     - name: Bare metal snapshot provider placeholder
       ansible.builtin.debug:
         msg:
           - "Bare metal snapshot provider selected."
           - "Provider implementation will be added in a future release."
-      when: snapshot_provider_effective == "baremetal"
+      when:
+        - snapshot_provider_effective == "baremetal"
