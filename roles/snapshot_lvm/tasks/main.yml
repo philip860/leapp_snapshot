@@ -1,13 +1,17 @@
 ---
+- name: Normalize skip snapshot flag
+  ansible.builtin.set_fact:
+    snapshot_skip_effective: "{{ skip_snapshot | default(false) | bool }}"
+
 - name: Skip LVM snapshot provider when requested
   ansible.builtin.debug:
     msg:
       - "SKIPPED: LVM snapshot provider skipped."
       - "Reason: skip_snapshot=true"
-  when: skip_snapshot | bool
+  when: snapshot_skip_effective
 
 - name: Run LVM snapshot provider
-  when: not skip_snapshot | bool
+  when: not snapshot_skip_effective
   block:
     - name: Validate requested snapshot action
       ansible.builtin.assert:
