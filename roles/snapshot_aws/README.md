@@ -4,8 +4,8 @@ AWS EC2 EBS snapshot provider role for `philip860.leapp_snapshot`.
 
 ## Purpose
 
-This role provides AWS EC2 snapshot support before Red Hat Enterprise Linux
-Leapp upgrade workflows.
+This role provides AWS EC2 EBS snapshot support before Red Hat Enterprise Linux
+(RHEL) Leapp upgrade workflows.
 
 The role performs AWS readiness checks, discovers the current EC2 instance,
 identifies attached EBS volumes, and manages snapshots using the
@@ -21,7 +21,7 @@ when an AWS EC2 instance is detected.
 
 ---
 
-## Supported actions
+# Supported actions
 
 - check
 - create
@@ -30,19 +30,19 @@ when an AWS EC2 instance is detected.
 
 ---
 
-## Action behavior
+# Action behavior
 
-### check
+## check
 
 Validates AWS snapshot readiness.
 
-The check action:
+The check action performs:
 
-- Detects AWS EC2 using Instance Metadata Service (IMDSv2)
-- Detects AWS region
-- Detects EC2 instance ID
-- Lists attached EBS volumes
-- Validates requested volumes
+- AWS EC2 detection using Instance Metadata Service v2 (IMDSv2)
+- AWS region discovery
+- EC2 instance ID discovery
+- Attached EBS volume discovery
+- Requested volume validation
 
 Example:
 
@@ -52,9 +52,9 @@ snapshot_action: check
 
 ---
 
-### create
+## create
 
-Creates EBS snapshots for the selected EC2 instance volumes.
+Creates AWS EBS snapshots for EC2 attached volumes.
 
 Example:
 
@@ -63,7 +63,9 @@ snapshot_action: create
 snapshot_set_name: leapp-preupgrade
 ```
 
-Snapshots are tagged automatically:
+By default, all attached EBS volumes are snapshotted.
+
+Snapshots are automatically tagged:
 
 ```yaml
 SnapshotSet: leapp-preupgrade
@@ -75,9 +77,9 @@ VolumeId: vol-xxxxxxxx
 
 ---
 
-### remove
+## remove
 
-Removes snapshots previously created by this collection.
+Removes AWS EBS snapshots previously created by this collection.
 
 Example:
 
@@ -86,7 +88,7 @@ snapshot_action: remove
 snapshot_set_name: leapp-preupgrade
 ```
 
-Snapshots are located using:
+Snapshots are discovered using:
 
 ```yaml
 SnapshotSet
@@ -97,19 +99,21 @@ tags.
 
 ---
 
-### revert
+## revert
 
 AWS revert support is intentionally protected.
 
-Unlike LVM rollback, AWS EBS rollback requires:
+Unlike LVM snapshots, AWS EBS rollback requires replacing attached volumes.
+
+The restore workflow requires:
 
 1. Stop EC2 instance
-2. Create volumes from snapshots
-3. Detach existing volumes
+2. Create replacement volumes from snapshots
+3. Detach current volumes
 4. Attach restored volumes using original device names
 5. Start EC2 instance
 
-The current implementation validates available snapshots but does not
+The current provider validates available restore snapshots but does not
 automatically replace running volumes.
 
 ---
@@ -124,17 +128,23 @@ Use the built-in AAP credential type:
 Amazon Web Services
 ```
 
-Attach this credential to the Job Template running the snapshot workflow.
+Create the credential with the name:
 
-Example Job Template credentials:
+```text
+RHEL AWS Credential
+```
+
+Attach this credential to the snapshot Job Templates.
+
+Example:
 
 ```yaml
 credentials:
   - RHEL Machine Credential
-  - AWS Credential
+  - RHEL AWS Credential
 ```
 
-AAP automatically provides:
+AAP automatically injects the standard AWS authentication variables:
 
 ```bash
 AWS_ACCESS_KEY_ID
@@ -142,17 +152,24 @@ AWS_SECRET_ACCESS_KEY
 AWS_SESSION_TOKEN
 ```
 
-to the execution environment.
+into the execution environment.
 
-No AWS keys should be stored in playbooks or variables.
+AWS credentials should not be stored in:
+
+- playbooks
+- inventory variables
+- surveys
+- extra_vars
+
+Authentication should always be handled by the AAP credential system.
 
 ---
 
 # Required AWS IAM Permissions
 
-The AWS credential requires permissions for EC2 snapshot management.
+The AWS account requires permissions to manage EC2 snapshots.
 
-Minimum permissions:
+Minimum IAM policy:
 
 ```json
 {
@@ -178,9 +195,9 @@ Minimum permissions:
 
 # Variables
 
-## Common variables
+## Common snapshot variables
 
-Provided by the dispatcher:
+Normally provided by `snapshot_dispatcher`.
 
 ```yaml
 snapshot_action: create
@@ -192,30 +209,67 @@ snapshot_provider: auto
 
 ---
 
-## AWS variables
+# AWS Provider Variables
 
-Normally these are auto-detected.
+## AWS region
+
+Automatically detected from EC2 metadata.
+
+Override if required:
 
 ```yaml
-# AWS region
-# blank = detect from EC2 metadata
+snapshot_aws_region: us-east-1
+```
+
+Default:
+
+```yaml
 snapshot_aws_region: ""
-
-# EC2 instance ID
-# blank = detect from EC2 metadata
-snapshot_aws_instance_id: ""
-
-# Snapshot all attached EBS volumes
-snapshot_aws_snapshot_all_volumes: true
 ```
 
 ---
 
-## Specific volume selection
+## EC2 instance ID
 
-By default, all attached EBS volumes are protected.
+Automatically detected.
 
-To snapshot specific volumes:
+Override:
+
+```yaml
+snapshot_aws_instance_id: i-xxxxxxxx
+```
+
+Default:
+
+```yaml
+snapshot_aws_instance_id: ""
+```
+
+---
+
+## Snapshot all attached EBS volumes
+
+Default behavior:
+
+```yaml
+snapshot_aws_snapshot_all_volumes: true
+```
+
+The provider discovers all attached EBS volumes:
+
+```text
+EC2 Instance
+     |
+     +-- Root EBS volume
+     |
+     +-- Additional EBS volumes
+```
+
+---
+
+# Specific volume selection
+
+To snapshot only selected volumes:
 
 ```yaml
 snapshot_aws_volume_ids:
@@ -223,9 +277,17 @@ snapshot_aws_volume_ids:
   - vol-yyyyyyyy
 ```
 
+If empty:
+
+```yaml
+snapshot_aws_volume_ids: []
+```
+
+all attached volumes are selected.
+
 ---
 
-## Snapshot options
+# Snapshot options
 
 ```yaml
 snapshot_aws_description: "Leapp pre-upgrade snapshot"
@@ -241,11 +303,13 @@ snapshot_aws_fail_when_no_volumes: true
 
 ---
 
-# Example dispatcher usage
+# Example Playbook Usage
+
+Normally users should call the dispatcher.
 
 ```yaml
 ---
-- name: Create upgrade snapshot
+- name: Create RHEL upgrade snapshot
   hosts: all
   become: true
 
@@ -262,14 +326,47 @@ AWS EC2 detected
 snapshot_aws
         |
         v
-EBS snapshot
+Create EBS Snapshot
 ```
 
 ---
 
-# Requirements
+# Example AAP Workflow
 
-Collections:
+Recommended workflow:
+
+```text
+01 - Fleet Analysis
+        |
+        v
+02 - Create Snapshot
+        |
+        v
+03 - Leapp Upgrade
+        |
+        v
+04 - Remove Snapshot
+```
+
+Snapshot job template:
+
+```yaml
+name: 02 - Create Snapshot
+
+credentials:
+  - RHEL Machine Credential
+  - RHEL AWS Credential
+
+extra_vars:
+  snapshot_action: create
+  snapshot_provider: auto
+```
+
+---
+
+# Collection Requirements
+
+Required collections:
 
 ```yaml
 amazon.aws
@@ -282,18 +379,23 @@ dependencies:
   amazon.aws: "*"
 ```
 
-in `galaxy.yml`.
+from `galaxy.yml`.
 
 ---
 
-# Supported platforms
+# Supported Operating Systems
+
+Guest operating systems:
 
 - RHEL 7
 - RHEL 8
 - RHEL 9
 - RHEL 10
 
-Running on:
+Cloud provider:
 
 - AWS EC2
-```
+
+Storage:
+
+- Amazon EBS
