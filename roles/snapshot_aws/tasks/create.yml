@@ -1,6 +1,6 @@
 ---
 - name: Run AWS snapshot readiness check before create
-  include_tasks: check.yml
+  ansible.builtin.include_tasks: check.yml
 
 - name: Execute AWS EBS snapshot create
   amazon.aws.ec2_snapshot:
@@ -14,8 +14,7 @@
       {{ inventory_hostname }}
       -
       {{ item }}
-    wait: "{{ snapshot_aws_wait | bool }}"
-    wait_timeout: "{{ snapshot_aws_wait_timeout }}"
+    wait: false
     snapshot_tags:
       Name: "{{ snapshot_aws_set_name }}-{{ inventory_hostname }}-{{ item }}"
       SnapshotSet: "{{ snapshot_aws_set_name }}"
@@ -30,14 +29,70 @@
   when:
     - snapshot_aws_effective_volume_ids | length > 0
 
-- name: Display AWS snapshot create results
-  debug:
-    msg:
-      - "AWS snapshot creation completed."
-      - "Instance ID: {{ snapshot_aws_effective_instance_id }}"
-      - "Region: {{ snapshot_aws_effective_region }}"
-      - "Volumes snapshotted: {{ snapshot_aws_effective_volume_ids }}"
-      - "Snapshot results:"
-      - "{{ snapshot_aws_create_results.results | default([]) }}"
+- name: Build created AWS snapshot ID list
+  ansible.builtin.set_fact:
+    snapshot_aws_created_snapshot_ids: >-
+      {{
+        snapshot_aws_create_results.results
+        | default([])
+        | selectattr('snapshot_id', 'defined')
+        | map(attribute='snapshot_id')
+        | list
+      }}
   when:
     - snapshot_aws_create_results is defined
+
+- name: Display AWS snapshot create submission results
+  ansible.builtin.debug:
+    msg:
+      - "AWS snapshot creation was submitted."
+      - "Instance ID: {{ snapshot_aws_effective_instance_id }}"
+      - "Region: {{ snapshot_aws_effective_region }}"
+      - "Volumes submitted: {{ snapshot_aws_effective_volume_ids }}"
+      - "Snapshot IDs: {{ snapshot_aws_created_snapshot_ids | default([]) }}"
+      - "AAP will now poll AWS for completion instead of waiting silently inside the create task."
+  when:
+    - snapshot_aws_create_results is defined
+
+- name: Wait for AWS EBS snapshots to complete
+  amazon.aws.ec2_snapshot_info:
+    region: "{{ snapshot_aws_effective_region }}"
+    snapshot_ids: "{{ snapshot_aws_created_snapshot_ids }}"
+  delegate_to: localhost
+  register: snapshot_aws_status
+  until: >-
+    {{
+      snapshot_aws_status.snapshots
+      | default([])
+      | selectattr('state', 'equalto', 'completed')
+      | list
+      | length == snapshot_aws_created_snapshot_ids | length
+    }}
+  retries: "{{ snapshot_aws_wait_retries | default(120) }}"
+  delay: "{{ snapshot_aws_wait_delay | default(30) }}"
+  when:
+    - snapshot_aws_wait | default(true) | bool
+    - snapshot_aws_created_snapshot_ids | default([]) | length > 0
+
+- name: Display AWS snapshot completion results
+  ansible.builtin.debug:
+    msg:
+      - "AWS snapshot polling completed."
+      - "Instance ID: {{ snapshot_aws_effective_instance_id }}"
+      - "Region: {{ snapshot_aws_effective_region }}"
+      - "Snapshot IDs: {{ snapshot_aws_created_snapshot_ids | default([]) }}"
+      - "Snapshot status:"
+      - "{{ snapshot_aws_status.snapshots | default([]) }}"
+  when:
+    - snapshot_aws_wait | default(true) | bool
+    - snapshot_aws_created_snapshot_ids | default([]) | length > 0
+
+- name: Display AWS snapshot async submission results
+  ansible.builtin.debug:
+    msg:
+      - "AWS snapshot creation was submitted but not waited on."
+      - "snapshot_aws_wait is false."
+      - "Snapshot IDs: {{ snapshot_aws_created_snapshot_ids | default([]) }}"
+  when:
+    - not snapshot_aws_wait | default(true) | bool
+    - snapshot_aws_created_snapshot_ids | default([]) | length > 0
