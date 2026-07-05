@@ -94,7 +94,7 @@
     snapshot_aws_missing_volume_ids: []
 
 - name: Gather EC2 instance information
-  ec2_instance_info:
+  amazon.aws.ec2_instance_info:
     region: "{{ snapshot_aws_effective_region }}"
     instance_ids:
       - "{{ snapshot_aws_effective_instance_id }}"
