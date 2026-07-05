@@ -3,7 +3,7 @@
   include_tasks: check.yml
 
 - name: Locate AWS EBS snapshots for removal
-  ec2_snapshot_info:
+  amazon.aws.ec2_snapshot_info:
     region: "{{ snapshot_aws_effective_region }}"
     filters:
       tag:SnapshotSet: "{{ snapshot_aws_set_name }}"
@@ -46,7 +46,7 @@
     - snapshot_aws_remove_ids | length == 0
 
 - name: Execute AWS EBS snapshot remove
-  ec2_snapshot:
+  amazon.aws.ec2_snapshot:
     region: "{{ snapshot_aws_effective_region }}"
     snapshot_id: "{{ item }}"
     state: absent
