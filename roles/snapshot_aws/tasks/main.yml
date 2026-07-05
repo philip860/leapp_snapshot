@@ -1,33 +1,166 @@
 ---
-- name: Skip LVM snapshot provider when requested
-  ansible.builtin.debug:
+- name: Validate AWS snapshot action
+  assert:
+    that:
+      - snapshot_action is defined
+      - snapshot_action in ['check', 'create', 'remove']
+    fail_msg: "snapshot_action must be one of: check, create, remove"
+
+- name: Get AWS metadata token
+  uri:
+    url: http://169.254.169.254/latest/api/token
+    method: PUT
+    headers:
+      X-aws-ec2-metadata-token-ttl-seconds: "21600"
+    return_content: yes
+    status_code: 200
+  register: snapshot_aws_metadata_token
+  changed_when: false
+  failed_when: false
+
+- name: Get AWS instance identity document
+  uri:
+    url: http://169.254.169.254/latest/dynamic/instance-identity/document
+    method: GET
+    headers:
+      X-aws-ec2-metadata-token: "{{ snapshot_aws_metadata_token.content | default('') }}"
+    return_content: yes
+    status_code: 200
+  register: snapshot_aws_identity_document
+  changed_when: false
+
+- name: Set AWS instance facts
+  set_fact:
+    snapshot_aws_identity: "{{ snapshot_aws_identity_document.content | from_json }}"
+    snapshot_aws_effective_region: "{{ snapshot_aws_region | default('') }}"
+
+- name: Normalize AWS region
+  set_fact:
+    snapshot_aws_effective_region: "{{ snapshot_aws_identity.region }}"
+  when:
+    - snapshot_aws_effective_region | length == 0
+
+- name: Normalize AWS instance ID
+  set_fact:
+    snapshot_aws_effective_instance_id: "{{ snapshot_aws_instance_id | default('') }}"
+
+- name: Use detected AWS instance ID
+  set_fact:
+    snapshot_aws_effective_instance_id: "{{ snapshot_aws_identity.instanceId }}"
+  when:
+    - snapshot_aws_effective_instance_id | length == 0
+
+- name: Display AWS snapshot provider summary
+  debug:
     msg:
-      - "SKIPPED: LVM snapshot provider skipped."
-      - "Reason: skip_snapshot=true"
-  when: skip_snapshot | bool
+      - "AWS snapshot action: {{ snapshot_action }}"
+      - "Snapshot set name: {{ snapshot_set_name | default('leapp-preupgrade') }}"
+      - "AWS region: {{ snapshot_aws_effective_region }}"
+      - "AWS instance ID: {{ snapshot_aws_effective_instance_id }}"
 
-- name: Run LVM snapshot provider
-  when: not skip_snapshot | bool
-  block:
-    - name: Validate requested snapshot action
-      ansible.builtin.assert:
-        that:
-          - snapshot_action is defined
-          - snapshot_action in snapshot_valid_actions
-        fail_msg: "snapshot_action must be one of: {{ snapshot_valid_actions | join(', ') }}"
+- name: Gather EC2 instance information
+  ec2_instance_info:
+    region: "{{ snapshot_aws_effective_region }}"
+    instance_ids:
+      - "{{ snapshot_aws_effective_instance_id }}"
+  delegate_to: localhost
+  register: snapshot_aws_instance_info
 
-    - name: Include LVM snapshot check tasks
-      ansible.builtin.include_tasks: check.yml
-      when: snapshot_action == "check"
+- name: Build attached EBS volume list
+  set_fact:
+    snapshot_aws_detected_volume_ids: >-
+      {{
+        snapshot_aws_instance_info.instances[0].block_device_mappings
+        | selectattr('ebs', 'defined')
+        | map(attribute='ebs.volume_id')
+        | list
+      }}
 
-    - name: Include LVM snapshot create tasks
-      ansible.builtin.include_tasks: create.yml
-      when: snapshot_action == "create"
+- name: Select AWS volumes to snapshot
+  set_fact:
+    snapshot_aws_effective_volume_ids: "{{ snapshot_aws_volume_ids }}"
+  when:
+    - snapshot_aws_volume_ids | default([]) | length > 0
 
-    - name: Include LVM snapshot remove tasks
-      ansible.builtin.include_tasks: remove.yml
-      when: snapshot_action == "remove"
+- name: Select all attached AWS volumes
+  set_fact:
+    snapshot_aws_effective_volume_ids: "{{ snapshot_aws_detected_volume_ids }}"
+  when:
+    - snapshot_aws_volume_ids | default([]) | length == 0
 
-    - name: Include LVM snapshot revert tasks
-      ansible.builtin.include_tasks: revert.yml
-      when: snapshot_action == "revert"
+- name: Fail when no AWS EBS volumes were detected
+  fail:
+    msg: >-
+      No EBS volumes were detected for instance {{ snapshot_aws_effective_instance_id }}.
+      Cannot perform AWS snapshot action.
+  when:
+    - snapshot_aws_effective_volume_ids | length == 0
+    - snapshot_aws_fail_when_no_volumes | bool
+
+- name: AWS snapshot check summary
+  debug:
+    msg:
+      - "AWS snapshot check completed."
+      - "Detected EBS volumes: {{ snapshot_aws_detected_volume_ids }}"
+      - "Selected EBS volumes: {{ snapshot_aws_effective_volume_ids }}"
+  when:
+    - snapshot_action == "check"
+
+- name: Create AWS EBS snapshots
+  ec2_snapshot:
+    region: "{{ snapshot_aws_effective_region }}"
+    volume_id: "{{ item }}"
+    description: "{{ snapshot_aws_description }} - {{ snapshot_set_name | default('leapp-preupgrade') }} - {{ inventory_hostname }} - {{ item }}"
+    wait: "{{ snapshot_aws_wait | bool }}"
+    wait_timeout: "{{ snapshot_aws_wait_timeout }}"
+    snapshot_tags:
+      Name: "{{ snapshot_set_name | default('leapp-preupgrade') }}-{{ inventory_hostname }}-{{ item }}"
+      SnapshotSet: "{{ snapshot_set_name | default('leapp-preupgrade') }}"
+      InstanceId: "{{ snapshot_aws_effective_instance_id }}"
+      InventoryHost: "{{ inventory_hostname }}"
+      VolumeId: "{{ item }}"
+      CreatedBy: "philip860.leapp_snapshot"
+      Purpose: "RHEL Leapp upgrade"
+  loop: "{{ snapshot_aws_effective_volume_ids }}"
+  delegate_to: localhost
+  register: snapshot_aws_create_results
+  when:
+    - snapshot_action == "create"
+    - snapshot_aws_effective_volume_ids | length > 0
+
+- name: Display created AWS snapshot results
+  debug:
+    var: snapshot_aws_create_results.results
+  when:
+    - snapshot_action == "create"
+    - snapshot_aws_create_results is defined
+
+- name: Find AWS snapshots for removal
+  ec2_snapshot_info:
+    region: "{{ snapshot_aws_effective_region }}"
+    filters:
+      tag:SnapshotSet: "{{ snapshot_set_name | default('leapp-preupgrade') }}"
+      tag:InstanceId: "{{ snapshot_aws_effective_instance_id }}"
+  delegate_to: localhost
+  register: snapshot_aws_remove_candidates
+  when:
+    - snapshot_action == "remove"
+
+- name: Remove AWS EBS snapshots
+  ec2_snapshot:
+    region: "{{ snapshot_aws_effective_region }}"
+    snapshot_id: "{{ item.snapshot_id }}"
+    state: absent
+  loop: "{{ snapshot_aws_remove_candidates.snapshots | default([]) }}"
+  delegate_to: localhost
+  register: snapshot_aws_remove_results
+  when:
+    - snapshot_action == "remove"
+    - snapshot_aws_delete_on_remove | bool
+
+- name: Display removed AWS snapshot results
+  debug:
+    var: snapshot_aws_remove_results.results
+  when:
+    - snapshot_action == "remove"
+    - snapshot_aws_remove_results is defined
