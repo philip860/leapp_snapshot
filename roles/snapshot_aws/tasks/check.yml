@@ -1,174 +1,197 @@
 ---
-- name: Set LVM snapshot variables
-  ansible.builtin.set_fact:
-    snapshot_create_set_name: "{{ snapshot_set_name | default('snapshot-set') }}"
-    snapshot_remove_set_name: "{{ snapshot_set_name | default('snapshot-set') }}"
-    snapshot_revert_set_name: "{{ snapshot_set_name | default('snapshot-set') }}"
-    snapshot_create_volumes_safe: "{{ snapshot_create_volumes | default(snapshot_lvm_volumes | default([])) }}"
+- name: Set AWS snapshot variables
+  set_fact:
+    snapshot_aws_set_name: "{{ snapshot_set_name | default('leapp-preupgrade') }}"
+    snapshot_aws_requested_volume_ids_safe: "{{ snapshot_aws_volume_ids | default([]) }}"
+    snapshot_aws_effective_region: "{{ snapshot_aws_region | default('') }}"
+    snapshot_aws_effective_instance_id: "{{ snapshot_aws_instance_id | default('') }}"
 
 - name: Detect platform type
-  ansible.builtin.command:
+  command:
     cmd: systemd-detect-virt
   register: snapshot_platform_detect
   changed_when: false
   failed_when: false
 
 - name: Gather filesystem layout
-  ansible.builtin.command:
+  command:
     cmd: df -hT
   register: snapshot_df
   changed_when: false
   failed_when: false
 
 - name: Gather block device layout
-  ansible.builtin.command:
+  command:
     cmd: lsblk -o NAME,TYPE,FSTYPE,SIZE,MOUNTPOINT
   register: snapshot_lsblk
   changed_when: false
   failed_when: false
 
-- name: Gather existing LVM logical volumes
-  ansible.builtin.command:
-    cmd: lvs --reportformat json -o vg_name,lv_name
-  register: lvm_snapshot_lvs_cmd
+- name: Get AWS metadata token
+  uri:
+    url: http://169.254.169.254/latest/api/token
+    method: PUT
+    headers:
+      X-aws-ec2-metadata-token-ttl-seconds: "21600"
+    return_content: yes
+    status_code: 200
+  register: snapshot_aws_metadata_token
   changed_when: false
   failed_when: false
 
-- name: Initialize LVM snapshot facts
-  ansible.builtin.set_fact:
-    lvm_snapshot_existing_volumes: []
-    lvm_snapshot_existing_vgs: []
-    lvm_snapshot_eligible_volumes: []
-    lvm_snapshot_missing_volumes: []
+- name: Get AWS instance identity document
+  uri:
+    url: http://169.254.169.254/latest/dynamic/instance-identity/document
+    method: GET
+    headers:
+      X-aws-ec2-metadata-token: "{{ snapshot_aws_metadata_token.content | default('') }}"
+    return_content: yes
+    status_code: 200
+  register: snapshot_aws_identity_document
+  changed_when: false
+  failed_when: false
 
-- name: Build discovered LVM volume list
-  ansible.builtin.set_fact:
-    lvm_snapshot_existing_volumes: >-
-      {{
-        lvm_snapshot_existing_volumes
-        +
-        [
-          {
-            'vg': item.vg_name | trim,
-            'lv': item.lv_name | trim
-          }
-        ]
-      }}
-  loop: "{{ ((lvm_snapshot_lvs_cmd.stdout | default('{}')) | from_json).report[0].lv | default([]) }}"
-  when:
-    - lvm_snapshot_lvs_cmd.rc == 0
-    - lvm_snapshot_lvs_cmd.stdout is defined
-    - lvm_snapshot_lvs_cmd.stdout | length > 0
-
-- name: Build discovered LVM VG list
-  ansible.builtin.set_fact:
-    lvm_snapshot_existing_vgs: "{{ lvm_snapshot_existing_volumes | map(attribute='vg') | unique | list }}"
-
-- name: Build eligible LVM snapshot volume list
-  ansible.builtin.set_fact:
-    lvm_snapshot_eligible_volumes: "{{ lvm_snapshot_eligible_volumes + [item] }}"
-  loop: "{{ snapshot_create_volumes_safe }}"
-  when:
-    - item.vg is defined
-    - item.lv is defined
-    - lvm_snapshot_existing_volumes
-      | selectattr('vg', 'equalto', item.vg)
-      | selectattr('lv', 'equalto', item.lv)
-      | list
-      | length > 0
-
-- name: Build missing LVM snapshot volume list
-  ansible.builtin.set_fact:
-    lvm_snapshot_missing_volumes: "{{ lvm_snapshot_missing_volumes + [item] }}"
-  loop: "{{ snapshot_create_volumes_safe }}"
-  when:
-    - item.vg is defined
-    - item.lv is defined
-    - lvm_snapshot_existing_volumes
-      | selectattr('vg', 'equalto', item.vg)
-      | selectattr('lv', 'equalto', item.lv)
-      | list
-      | length == 0
-
-- name: LVM snapshot readiness summary
-  ansible.builtin.debug:
-    msg:
-      - "Snapshot provider: LVM"
-      - "Snapshot action requested: {{ snapshot_action }}"
-      - "Snapshot set name: {{ snapshot_create_set_name }}"
-      - "Detected platform: {{ snapshot_platform_detect.stdout | default('bare-metal-or-unknown') }}"
-      - "Detected LVM volume groups: {{ lvm_snapshot_existing_vgs }}"
-      - "Detected LVM logical volumes: {{ lvm_snapshot_existing_volumes }}"
-      - "Requested LVM snapshot volumes: {{ snapshot_create_volumes_safe }}"
-      - "Eligible LVM snapshot volumes: {{ lvm_snapshot_eligible_volumes }}"
-      - "Missing requested LVM volumes: {{ lvm_snapshot_missing_volumes }}"
-
-- name: ALERT - No LVM snapshot volumes provided
-  ansible.builtin.debug:
-    msg:
-      - "ALERT: No LVM snapshot volumes were provided."
-      - "Set snapshot_lvm_volumes or snapshot_create_volumes."
-      - "No LVM snapshot will be created on this host."
-  when:
-    - snapshot_create_volumes_safe | length == 0
-
-- name: ALERT - Bare metal host has no LVM
-  ansible.builtin.debug:
-    msg:
-      - "ALERT: This appears to be a bare metal host, but no LVM logical volumes were detected."
-      - "No LVM snapshot was created."
-      - "Filesystem layout:"
-      - "{{ snapshot_df.stdout_lines | default([]) }}"
-      - "Block device layout:"
-      - "{{ snapshot_lsblk.stdout_lines | default([]) }}"
-  when:
-    - lvm_snapshot_existing_volumes | length == 0
-    - snapshot_platform_detect.rc != 0
-      or snapshot_platform_detect.stdout in ['', 'none']
-
-- name: ALERT - Virtual/cloud host has no LVM
-  ansible.builtin.debug:
-    msg:
-      - "ALERT: This host appears to be virtualized or cloud-based, but no LVM logical volumes were detected."
-      - "Detected platform: {{ snapshot_platform_detect.stdout | default('unknown') }}"
-      - "No LVM snapshot was created."
-      - "Filesystem layout:"
-      - "{{ snapshot_df.stdout_lines | default([]) }}"
-      - "Block device layout:"
-      - "{{ snapshot_lsblk.stdout_lines | default([]) }}"
-  when:
-    - lvm_snapshot_existing_volumes | length == 0
-    - snapshot_platform_detect.rc == 0
-    - snapshot_platform_detect.stdout not in ['', 'none']
-
-- name: ALERT - Requested VG/LV pairs are missing
-  ansible.builtin.debug:
-    msg:
-      - "ALERT: Some requested VG/LV pairs do not exist on this host."
-      - "These requested volumes will NOT be snapshotted:"
-      - "{{ lvm_snapshot_missing_volumes }}"
-      - "Existing LVM volumes on this host:"
-      - "{{ lvm_snapshot_existing_volumes }}"
-  when:
-    - lvm_snapshot_missing_volumes | length > 0
-
-- name: Stop host if no matching LVM volumes were found and strict mode is enabled
-  ansible.builtin.fail:
+- name: Fail when AWS metadata cannot be reached
+  fail:
     msg: >-
-      No requested LVM volumes were found on this host.
-      No LVM snapshot was created.
-      Missing requested volumes: {{ lvm_snapshot_missing_volumes }}.
-      Existing LVM volumes: {{ lvm_snapshot_existing_volumes }}.
+      AWS metadata could not be reached from this host.
+      This AWS snapshot provider requires an EC2 instance.
+      Detected platform: {{ snapshot_platform_detect.stdout | default('unknown') }}.
+      Filesystem layout: {{ snapshot_df.stdout_lines | default([]) }}.
+      Block device layout: {{ snapshot_lsblk.stdout_lines | default([]) }}.
   when:
-    - lvm_snapshot_eligible_volumes | length == 0
-    - lvm_snapshots_fail_when_no_matching_lvs | bool
+    - snapshot_aws_identity_document.rc is defined
+    - snapshot_aws_identity_document.rc != 0
+    - snapshot_aws_fail_when_no_volumes | default(true) | bool
 
-- name: Skip host safely when no matching LVM volumes exist
-  ansible.builtin.debug:
+- name: Parse AWS instance identity document
+  set_fact:
+    snapshot_aws_identity: "{{ snapshot_aws_identity_document.content | from_json }}"
+  when:
+    - snapshot_aws_identity_document.content is defined
+    - snapshot_aws_identity_document.content | length > 0
+
+- name: Normalize AWS region from metadata
+  set_fact:
+    snapshot_aws_effective_region: "{{ snapshot_aws_identity.region }}"
+  when:
+    - snapshot_aws_effective_region | length == 0
+    - snapshot_aws_identity is defined
+    - snapshot_aws_identity.region is defined
+
+- name: Normalize AWS instance ID from metadata
+  set_fact:
+    snapshot_aws_effective_instance_id: "{{ snapshot_aws_identity.instanceId }}"
+  when:
+    - snapshot_aws_effective_instance_id | length == 0
+    - snapshot_aws_identity is defined
+    - snapshot_aws_identity.instanceId is defined
+
+- name: Initialize AWS snapshot facts
+  set_fact:
+    snapshot_aws_detected_volume_ids: []
+    snapshot_aws_effective_volume_ids: []
+    snapshot_aws_missing_volume_ids: []
+
+- name: Gather EC2 instance information
+  ec2_instance_info:
+    region: "{{ snapshot_aws_effective_region }}"
+    instance_ids:
+      - "{{ snapshot_aws_effective_instance_id }}"
+  delegate_to: localhost
+  register: snapshot_aws_instance_info
+  when:
+    - snapshot_aws_effective_region | length > 0
+    - snapshot_aws_effective_instance_id | length > 0
+
+- name: Build detected AWS EBS volume list
+  set_fact:
+    snapshot_aws_detected_volume_ids: >-
+      {{
+        snapshot_aws_instance_info.instances[0].block_device_mappings
+        | default([])
+        | selectattr('ebs', 'defined')
+        | map(attribute='ebs.volume_id')
+        | list
+      }}
+  when:
+    - snapshot_aws_instance_info is defined
+    - snapshot_aws_instance_info.instances is defined
+    - snapshot_aws_instance_info.instances | length > 0
+
+- name: Select requested AWS EBS volumes
+  set_fact:
+    snapshot_aws_effective_volume_ids: "{{ snapshot_aws_requested_volume_ids_safe }}"
+  when:
+    - snapshot_aws_requested_volume_ids_safe | length > 0
+
+- name: Select all detected AWS EBS volumes
+  set_fact:
+    snapshot_aws_effective_volume_ids: "{{ snapshot_aws_detected_volume_ids }}"
+  when:
+    - snapshot_aws_requested_volume_ids_safe | length == 0
+
+- name: Build missing requested AWS EBS volume list
+  set_fact:
+    snapshot_aws_missing_volume_ids: "{{ snapshot_aws_missing_volume_ids + [item] }}"
+  loop: "{{ snapshot_aws_requested_volume_ids_safe }}"
+  when:
+    - item not in snapshot_aws_detected_volume_ids
+
+- name: AWS snapshot readiness summary
+  debug:
+    msg:
+      - "Snapshot provider: AWS"
+      - "Snapshot action requested: {{ snapshot_action }}"
+      - "Snapshot set name: {{ snapshot_aws_set_name }}"
+      - "Detected platform: {{ snapshot_platform_detect.stdout | default('unknown') }}"
+      - "AWS region: {{ snapshot_aws_effective_region | default('unknown') }}"
+      - "AWS instance ID: {{ snapshot_aws_effective_instance_id | default('unknown') }}"
+      - "Detected AWS EBS volumes: {{ snapshot_aws_detected_volume_ids }}"
+      - "Requested AWS EBS volumes: {{ snapshot_aws_requested_volume_ids_safe }}"
+      - "Eligible AWS EBS volumes: {{ snapshot_aws_effective_volume_ids }}"
+      - "Missing requested AWS EBS volumes: {{ snapshot_aws_missing_volume_ids }}"
+
+- name: ALERT - No AWS EBS volumes detected
+  debug:
+    msg:
+      - "ALERT: No AWS EBS volumes were detected for this EC2 instance."
+      - "No AWS snapshot will be created on this host."
+      - "Filesystem layout:"
+      - "{{ snapshot_df.stdout_lines | default([]) }}"
+      - "Block device layout:"
+      - "{{ snapshot_lsblk.stdout_lines | default([]) }}"
+  when:
+    - snapshot_aws_detected_volume_ids | length == 0
+
+- name: ALERT - Requested AWS EBS volumes are missing
+  debug:
+    msg:
+      - "ALERT: Some requested AWS EBS volume IDs are not attached to this instance."
+      - "These requested volumes will NOT be snapshotted:"
+      - "{{ snapshot_aws_missing_volume_ids }}"
+      - "Detected AWS EBS volumes on this instance:"
+      - "{{ snapshot_aws_detected_volume_ids }}"
+  when:
+    - snapshot_aws_missing_volume_ids | length > 0
+
+- name: Stop host if no matching AWS EBS volumes were found and strict mode is enabled
+  fail:
+    msg: >-
+      No matching AWS EBS volumes were found on this host.
+      No AWS snapshot was created.
+      Missing requested volumes: {{ snapshot_aws_missing_volume_ids }}.
+      Detected EBS volumes: {{ snapshot_aws_detected_volume_ids }}.
+  when:
+    - snapshot_aws_effective_volume_ids | length == 0
+    - snapshot_aws_fail_when_no_volumes | default(true) | bool
+
+- name: Skip host safely when no matching AWS EBS volumes exist
+  debug:
     msg:
       - "SKIPPED: Snapshot action '{{ snapshot_action }}' was not performed on this host."
-      - "Reason: no requested LVM VG/LV pairs exist on this system."
-      - "This is safe behavior for this LVM snapshot provider."
+      - "Reason: no matching AWS EBS volumes exist for this system."
+      - "This is safe behavior for this AWS snapshot provider."
   when:
-    - lvm_snapshot_eligible_volumes | length == 0
-    - not lvm_snapshots_fail_when_no_matching_lvs | bool
+    - snapshot_aws_effective_volume_ids | length == 0
+    - not snapshot_aws_fail_when_no_volumes | default(true) | bool
